@@ -5,7 +5,8 @@
 \usage{
 corHMM(phy, data, rate.cat, rate.mat=NULL, model = "ARD", node.states = "marginal", 
 fixed.nodes=FALSE, p=NULL, root.p="yang", ip=NULL, nstarts=0, n.cores=1, 
-get.tip.states = FALSE, lewis.asc.bias = FALSE, lower.bound = 1e-9, upper.bound = 100)
+get.tip.states = FALSE, lewis.asc.bias = FALSE, lower.bound = 1e-9, upper.bound = 100,
+print.level = 0)
 }
 \arguments{
 \item{phy}{a phylogenetic tree, in \code{ape} \dQuote{phylo} format.}
@@ -24,6 +25,7 @@ get.tip.states = FALSE, lewis.asc.bias = FALSE, lower.bound = 1e-9, upper.bound 
 \item{lewis.asc.bias}{a boolean indicating whether to correct for observing a dataset that is not univariate. The default is \code{FALSE}}.
 \item{lower.bound}{lower bound for the likelihood search. The default is \code{lower.bound=1e-9}.}
 \item{upper.bound}{upper bound for the likelihood search. The default is \code{upper.bound=100}.}
+\item{print.level}{integer giving how much detail (0=least, 3=most) to output during optimization.}
 }
 \details{
 This function takes a tree and a trait file and estimates transition rates and ancestral states for any number of discrete characters using a Markov model with or without "hidden" states. Users are advised to read the _Generalized corHMM_ vignette for details on how to make full use of \code{corHMM}'s new functionality. In general, these models describe evolution as discrete transitions between observed states. If rate.class > 1, then the model is a hidden Markov model (HMM; also known as a hidden rates model (HRM)). The HRM is a generalization of the covarion model that allows different rate classes to be treated as "hidden" states. Essentially a hidden Markov model allows for multiple processes to describe the evolution of your observed character. This could be another (hidden) state or a large group of them. Regardless of the reason, an HMM is saying that not all observed characters are expected to act the same way. 
@@ -37,6 +39,8 @@ The likelihood function is maximized using the bounded subplex optimization rout
 The user can fix the root state probabilities by supplying a vector to \code{root.p}. For example, if the hypothesis is that the root is 0_S in a model with two hidden rates, then the root vector would be \code{root.p=c(1,0,0,0)} for state combinations 0_S, 1_S, 0_F, and 1_F, respectively. If the user supplies the flag \code{root.p}=\dQuote{NULL}, then there is equal weighting among all possible states in the  model. If the user supplies the flag \code{root.p}=\dQuote{yang}, then the estimated transition rates are used to set the weights at the root (see pg. 124 Yang 2006), whereas specifying \code{root.p}=\dQuote{maddfitz} employs the same procedure described by Maddison et al. (2007) and FitzJohn et al. (2009). Note that the default \code{root.p="yang"}.
 
 Ancestral states can be estimated using marginal, joint, scaled, or none approaches. Marginal gives the likelihood of state at each node, integrating over the states at other nodes. Joint gives the optimal state at each node for the entire tree at once (it can only return the most likely state, i.e. it is not a probability like the marginal reconstruction). Scaled is included for compatibility with ape's ace() function. None suppresses calculation of ancestral states, which can dramatically speed up calculations if you're comparing models but make plotting difficult.
+
+The optimization of parameters can take some time. By default, corHMM does not output any information during this search, but by changing print.level from its default of 0 to 1 it will show how many iterations it has done and the likelihood at each; levels 2 and 3 have more information still (see nloptr::nloptr.print.options() for more detail).
 }
 \value{
 \code{corHMM} returns an object of class \code{corHMM}. This is a list with elements:
@@ -54,6 +58,8 @@ Ancestral states can be estimated using marginal, joint, scaled, or none approac
 \item{$states.info}{a vector containing the amount of information (in bits) that the tip states and model gives to each node.}
 \item{$iterations}{The number of iterations used by the optimization routine.}
 \item{$root.p}{The root prior used in model estimation.}
+\item{$lewis.asc.bias}{Whether this corrects for ascertainment bias.}
+\item{$node.states}{How states at internal nodes are calculated.}
 }
 \examples{
 \donttest{
