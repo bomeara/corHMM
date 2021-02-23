@@ -26,10 +26,10 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 
 
 	
-	compute_likelihood <- function(par, corhmm_object) {
+	compute_lnlikelihood <- function(par, corhmm.object) {
 
 		corhmm.object$order.test <- FALSE
-
+		corhmm.object$phy$node.label <- NULL
 		nObs <- length(corHMM:::corProcessData(corhmm.object$data)$ObservedTraits)
 		model.set.final <- corHMM:::rate.cat.set.corHMM.JDB(phy = corhmm.object$phy, data = corhmm.object$data, rate.cat = corhmm.object$rate.cat, ntraits = nObs, model = "ARD")
 		rate.mat <- MK_3state$index.mat
@@ -60,7 +60,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 		)
 
 		#return(dev.corhmm(log(par), corhmm_object$phy, liks=42, Q=42, rate=42, root.p=corhmm.object$root.p, rate.cat=42, order.test=42, lewis.asc.bias=ifelse(any(grepl("lewis.asc.bias", names(corhmm.object))), corhmm.object$lewis.asc.bias, FALSE)))
-		return(result)
+		return(-result)
 	}
 
 	# Univariate
@@ -70,15 +70,21 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 		par <- par.best
 		current.lnl <- best.lnl
 		while(current.lnl > best.lnl - desired.delta) {
-			par[par_index] <- par[par_index]*.95
-			current.lnl <- compute_likelihood(par, corhmm_object)
+			par[par_index] <- par[par_index]*.99
+			current.lnl <- compute_lnlikelihood(par, corhmm.object)
 			results[nrow(results)+1,] <- c(current.lnl, par)
+			if(verbose & nrow(results)%%100==0) {
+				print(tail(results,100))
+			}
 		}
 		current.lnl <- best.lnl
 		while(current.lnl > best.lnl - desired.delta) {
-			par[par_index] <- par[par_index]*1.05
-			current.lnl <- compute_likelihood(par, corhmm_object)
+			par[par_index] <- par[par_index]*1.01
+			current.lnl <- compute_lnlikelihood(par, corhmm.object)
 			results[nrow(results)+1,] <- c(current.lnl, par)
+			if(verbose & nrow(results)%%100==0) {
+				print(tail(results,100))
+			}
 		}
 	}
 
@@ -87,7 +93,12 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 	lower <- apply(results[,-1], 2, min, na.rm=TRUE)
 	upper <- apply(results[,-1], 2, max, na.rm=TRUE)
 	starting.row <- nrow(results)
-	results <- rbind(results, matrix(nrow=n.points, ncol=1+length(par)))
+	print("rbinding")
+	more_results <- matrix(nrow=n.points, ncol=1+length(par))
+	colnames(more_results) <- colnames(results)
+	print(colnames(results))
+	print(colnames(more_results))
+	results <- rbind(results, more_results)
     min.multipliers <- rep(1, length(par))
     max.multipliers <- rep(1, length(par))
     for (i in sequence(n.points)) {
@@ -95,7 +106,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
         while(is.na(sim.points[1]) | !is.numeric(sim.points[1])) {
             sim.points<-GenerateValues(par, lower, upper, examined.max=max.multipliers*apply(results[which(results[,1]-min(results[,1], na.rm=TRUE)<=desired.delta),-1], 2, max, na.rm=TRUE), examined.min=min.multipliers*apply(results[which(results[,1]-min(results[,1], na.rm=TRUE)<=desired.delta),-1], 2, min, na.rm=TRUE))
         }
-        results[i+starting.row,] <- c(compute_likelihood(sim.points, corhmm.object), sim.points)
+        results[i+starting.row,] <- c(compute_lnlikelihood(sim.points, corhmm.object), sim.points)
         # if(i>5 & restart.mode) {
         #     if((best.lnl - min(results[,1], na.rm=TRUE) > likelihood.precision ) & allow.restart) {
         #         results <- results[sequence(i+1),] #stop here and restart
