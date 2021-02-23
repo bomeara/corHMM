@@ -92,6 +92,15 @@ test_that("All rates different, one node fixed",{
     expect_true(comparison)
 })
 
+test_that("Confidence works", {
+    skip_on_cran()
+	data(primates)
+	phy <- multi2di(primates[[1]])
+	data <- primates[[2]]
+	MK_3state <- corHMM(phy = phy, data = data, rate.cat = 1)
+	confidence_results <- ComputeConfidenceIntervals(MK_3state)
+})
+
 
 ######################################################################################################################################
 ######################################################################################################################################

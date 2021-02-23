@@ -24,8 +24,43 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 	}
 	par.best <- par
 
+
+	
 	compute_likelihood <- function(par, corhmm_object) {
-		return(dev.corhmm(log(par), corhmm_object$phy, liks=42, Q=42, rate=42, root.p=corhmm.object$root.p, rate.cat=42, order.test=42, lewis.asc.bias=ifelse(any(grepl("lewis.asc.bias", names(corhmm.object))), corhmm.object$lewis.asc.bias, FALSE)))
+
+		corhmm.object$order.test <- FALSE
+
+		nObs <- length(corHMM:::corProcessData(corhmm.object$data)$ObservedTraits)
+		model.set.final <- corHMM:::rate.cat.set.corHMM.JDB(phy = corhmm.object$phy, data = corhmm.object$data, rate.cat = corhmm.object$rate.cat, ntraits = nObs, model = "ARD")
+		rate.mat <- MK_3state$index.mat
+		rate.mat[rate.mat == 0] <- NA
+		rate <- rate.mat
+		model.set.final$np <- max(rate, na.rm=TRUE)
+		rate[is.na(rate)]=max(rate, na.rm=TRUE)+1
+		model.set.final$rate <- rate
+		model.set.final$index.matrix <- rate.mat
+		model.set.final$Q <- matrix(0, dim(rate.mat)[1], dim(rate.mat)[2])
+		## for precursor type models ##
+		col.sums <- which(colSums(rate.mat, na.rm=TRUE) == 0)
+		row.sums <- which(rowSums(rate.mat, na.rm=TRUE) == 0)
+		drop.states <- col.sums[which(col.sums == row.sums)]
+		if(length(drop.states > 0)){
+		model.set.final$liks[,drop.states] <- 0
+		}
+		result <- corHMM:::dev.corhmm(
+			p = log(par), 
+			phy = corhmm.object$phy, 
+			liks = model.set.final$liks, 
+			Q = model.set.final$Q, 
+			rate = model.set.final$rate, 
+			root.p = corhmm.object$root.p, 
+			rate.cat = corhmm.object$rate.cat, 
+			order.test = corhmm.object$order.test, 
+			lewis.asc.bias = ifelse(any(grepl("lewis.asc.bias", names(corhmm.object))), corhmm.object$lewis.asc.bias, FALSE)
+		)
+
+		#return(dev.corhmm(log(par), corhmm_object$phy, liks=42, Q=42, rate=42, root.p=corhmm.object$root.p, rate.cat=42, order.test=42, lewis.asc.bias=ifelse(any(grepl("lewis.asc.bias", names(corhmm.object))), corhmm.object$lewis.asc.bias, FALSE)))
+		return(result)
 	}
 
 	# Univariate
