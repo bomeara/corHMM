@@ -18,10 +18,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 	raw.rates <- corhmm.object$solution
 	corhmm.object$node.states <- "none" #we don't want to waste time on this
 
-	par <- rep(NA,max(index.mat, na.rm=TRUE))
-	for (i in seq_along(par)) {
-		par[i] <- raw.rates[which(index.mat==i)]
-	}
+	par <- MatrixToPars(corhmm.object)
 	par.best <- par
 
 
@@ -72,6 +69,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 	if(good.only) {
 		results <- results.good.enough
 	}
+	colnames(results) <- c("lnL", names(par))
     return(results)
 }
 
@@ -81,15 +79,14 @@ HessianConfidence <- function(corhmm.object) {
 	raw.rates <- corhmm.object$solution
 	corhmm.object$node.states <- "none" #we don't want to waste time on this
 
-	par <- rep(NA,max(index.mat, na.rm=TRUE))
-	for (i in seq_along(par)) {
-		par[i] <- raw.rates[which(index.mat==i)]
-	}
+	par <- MatrixToPars(corhmm.object)
 	hess <- numDeriv::hessian(compute_lnlikelihood, par, "Richardson", method.args=list(), corhmm.object)
 	fisher_info<-solve(-hess)
 	prop_sigma<-sqrt(diag(fisher_info))
 	return.matrix <- rbind(par-1.96*prop_sigma, par+1.96*prop_sigma)
+	return.matrix[which(return.matrix<0)] <- 0
 	rownames(return.matrix) <- c("lower", "upper")
+	colnames(return.matrix) <- names(par)
 	return(return.matrix)
 }
 
@@ -174,4 +171,45 @@ GetGridPoints <- function(lower, upper, n.points) {
 	}
 	parameter.matrix <- expand.grid(vector.list)
 	return(parameter.matrix)
+}
+
+# A which for multidimensional arrays.
+# Mark van der Loo 16.09.2011
+#
+# A Array of booleans
+# returns a sum(A) x length(dim(A)) array of multi-indices where A == TRUE
+#
+multi.which <- function(A){
+    if ( is.vector(A) ) return(which(A))
+    d <- dim(A)
+    T <- which(A) - 1
+    nd <- length(d)
+    t( sapply(T, function(t){
+        I <- integer(nd)
+        I[1] <- t %% d[1]
+        sapply(2:nd, function(j){
+            I[j] <<- (t %/% prod(d[1:(j-1)])) %% d[j]
+        })
+        I
+    }) + 1 )
+}
+
+ParsToMatrix <- function(pars, corhmm.object) {
+	return_mat <- matrix(pars[corhmm.object$index.mat], dim(corhmm.object$index.mat))
+	rownames(return_mat) <- rownames(corhmm.object$solution)
+	colnames(return_mat) <- colnames(corhmm.object$solution)
+	return(return_mat)
+}
+
+MatrixToPars <- function(corhmm.object) {
+	index.mat <- corhmm.object$index.mat
+	raw.rates <- corhmm.object$solution
+
+	par <- rep(NA,max(index.mat, na.rm=TRUE))
+	for (i in seq_along(par)) {
+		par[i] <- raw.rates[which(index.mat==i)]
+		relevant_indices <- multi.which(index.mat==i)[1,]
+		names(par)[i] <- paste0(rownames(raw.rates)[relevant_indices[1]]," -> ", colnames(raw.rates)[relevant_indices[2]])
+	}
+	return(par)
 }
