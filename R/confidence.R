@@ -89,7 +89,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 }
 
 print.corhmm_confidence <- function(obj) {
-	obj_rates <- obj[,-1]
+	obj_rates <- as.data.frame(obj[,-1])
 	best_index <- which.max(obj$lnL)[1]
 	cat("Range of log likelihoods is ", max(obj$lnL), " to ", min(obj$lnL), " a difference of ", max(obj$lnL)- min(obj$lnL), "\n", sep="")
 	result <- data.frame(min=apply(obj_rates, 2, min), best=obj_rates[best_index,], max=apply(obj_rates, 2, max))
