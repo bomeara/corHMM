@@ -7,12 +7,20 @@
 #' @param n.points How many points to use
 #' @param verbose If TRUE, print details of the search to the screen
 #' @param good.only If TRUE, only return the ones within the desired delta
+#' @param use.pbapply If TRUE, use the pbapply package to give output for the multivariate fitting
+#' @param n.cores If using pbapply, batch the analyses across this many cores
 #' @param ... Other arguments to pass into the likelihood function.
 #' @export 
 #' @examples 
-#' 
+#' 	data(primates)
+#'	phy <- multi2di(primates[[1]])
+#'	data <- primates[[2]]
+#'	MK_3state <- corHMM(phy = phy, data = data, rate.cat = 1)
+#'	confidence_results <- ComputeConfidenceIntervals(MK_3state)
+#'  print(confidence_results)
+#'  plot(confidence_results, pch=".", col=rgb(0,0,0,.5))
 #' @author Brian C. O'Meara
-ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.points=5000, verbose=TRUE, good.only=TRUE, ...) {
+ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.points=5000, verbose=TRUE, good.only=TRUE, use.pbapply=FALSE, n.cores=1, ...) {
 	best.lnl <- corhmm.object$loglik
 	index.mat <- corhmm.object$index.mat
 	raw.rates <- corhmm.object$solution
@@ -21,10 +29,6 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 	par <- MatrixToPars(corhmm.object)
 	par.best <- par
 
-
-	
-
-
 	# Univariate
 	results<-data.frame(data.frame(matrix(nrow=1, ncol=1+length(par))))
 	results[1,] <- c(best.lnl, par.best)
@@ -32,7 +36,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 		par <- par.best
 		current.lnl <- best.lnl
 		while(current.lnl > best.lnl - 5*desired.delta) {
-			par[par_index] <- par[par_index]*.99
+			par[par_index] <- par[par_index]*.97
 			current.lnl <- compute_lnlikelihood(par, corhmm.object)
 			results[nrow(results)+1,] <- c(current.lnl, par)
 			if(verbose & nrow(results)%%100==0) {
@@ -41,7 +45,7 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 		}
 		current.lnl <- best.lnl
 		while(current.lnl > best.lnl - 5*desired.delta) {
-			par[par_index] <- par[par_index]*1.01
+			par[par_index] <- par[par_index]*1.03
 			current.lnl <- compute_lnlikelihood(par, corhmm.object)
 			results[nrow(results)+1,] <- c(current.lnl, par)
 			if(verbose & nrow(results)%%100==0) {
@@ -49,28 +53,58 @@ ComputeConfidenceIntervals <- function(corhmm.object, desired.delta = 2, n.point
 			}
 		}
 	}
+	dim_univariate <- nrow(results)-1
 
 	# Multivariate
 	lower <- apply(results[,-1], 2, min, na.rm=TRUE)
 	upper <- apply(results[,-1], 2, max, na.rm=TRUE)
-	new.params <- GetGridPoints(lower, upper, n.points)
-	new.lnl <- pbapply(new.params, 1, compute_lnlikelihood, corhmm.object)
+	#new.params <- GetGridPoints(lower, upper, n.points)
+	new.params <- GetLHSPoints(lower, upper, n.points)
+
+	if(verbose) {
+		print("About to estimate multivariate uncertainty")
+	}
+	new.lnl <- rep(NA, nrow(new.params))
+	if(use.pbapply) {
+		new.lnl <- pbapply::pbapply(new.params, 1, compute_lnlikelihood, corhmm.object, cl=n.cores)
+	} else {
+		new.lnl <- apply(new.params, 1, compute_lnlikelihood, corhmm.object)
+	}
 
 	more_results <- cbind(matrix(new.lnl, ncol=1), new.params)
 	colnames(more_results) <- colnames(results)
 
 
 	results <- rbind(results, more_results)
+	#results$type <- c("start", rep("univariate", dim_univariate), rep("multivariate", n.points))
+
 	results.good.enough <- subset(results, results[,1]>max(results[,1])-desired.delta)
-	if(verbose) {
-		print(apply(results.good.enough[,-1], 2, range))
-	}
 
 	if(good.only) {
 		results <- results.good.enough
 	}
 	colnames(results) <- c("lnL", names(par))
+	class(results) <- append("corhmm_confidence", class(results))
     return(results)
+}
+
+print.corhmm_confidence <- function(obj) {
+	obj_rates <- obj[,-1]
+	best_index <- which.max(obj$lnL)[1]
+	cat("Range of log likelihoods is ", max(obj$lnL), " to ", min(obj$lnL), " a difference of ", max(obj$lnL)- min(obj$lnL), "\n", sep="")
+	result <- data.frame(min=apply(obj_rates, 2, min), best=obj_rates[best_index,], max=apply(obj_rates, 2, max))
+	rownames(result) <- colnames(obj_rates)
+	for (i in sequence(ncol(obj_rates))) {
+		for (j in sequence(ncol(obj_rates))) {
+			if(i!=j) {
+				ratios <- obj_rates[,i] / obj_rates[,j]
+				result <- rbind(result, c(min(ratios), obj_rates[best_index,i] / obj_rates[best_index,j], max(ratios)))
+				rownames(result)[nrow(result)] <- paste0(colnames(obj_rates)[i], " / ", colnames(obj_rates)[j])
+			}
+		}
+	}
+	print(result)
+
 }
 
 
@@ -170,6 +204,16 @@ GetGridPoints <- function(lower, upper, n.points) {
 		vector.list[[i]] <- seq(from=lower[i], to=upper[i], length.out=n.grains)
 	}
 	parameter.matrix <- expand.grid(vector.list)
+	return(parameter.matrix)
+}
+
+GetLHSPoints <- function(lower, upper, n.points) {
+	raw.points <- lhs::randomLHS(n=n.points, k=length(lower))
+	parameter.matrix <- NA*raw.points
+	for (i in seq_along(lower)) {
+		parameter.matrix[,i] <- qunif(raw.points[,i], min=lower[i], max=upper[i])
+	}
+	colnames(parameter.matrix) <- names(lower)
 	return(parameter.matrix)
 }
 
